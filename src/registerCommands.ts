@@ -11,6 +11,14 @@ const commands = [
         .setDescription("Show available commands"),
 
     new SlashCommandBuilder()
+        .setName("joke")
+        .setDescription("Get a random joke"),
+
+    new SlashCommandBuilder()
+        .setName("dadjoke")
+        .setDescription("Get a random da joke"),
+
+    new SlashCommandBuilder()
         .setName("meme")
         .setDescription("Get a random meme"),
 
