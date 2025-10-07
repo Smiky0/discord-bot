@@ -1,40 +1,70 @@
-import "dotenv/config";
-import { REST, Routes, SlashCommandBuilder } from "discord.js";
-
-const token = process.env.TOKEN;
-const applicationId = process.env.APPLICATION_ID || "";
-const guildId = process.env.GUILD_ID;
+import { REST, Routes, SlashCommandBuilder, ChannelType } from "discord.js";
+import { config } from "./utils/config";
 
 const commands = [
     new SlashCommandBuilder()
         .setName("ping")
-        .setDescription("Replies with server ping!"),
-    new SlashCommandBuilder().setName("help").setDescription("Show help"),
+        .setDescription("Check bot latency"),
+
+    new SlashCommandBuilder()
+        .setName("help")
+        .setDescription("Show available commands"),
+
+    new SlashCommandBuilder()
+        .setName("meme")
+        .setDescription("Get a random meme"),
+
+    new SlashCommandBuilder()
+        .setName("meme-auto")
+        .setDescription("Configure automatic meme posting")
+        .addSubcommand((sub) =>
+            sub
+                .setName("set")
+                .setDescription("Enable auto memes")
+                .addChannelOption((o) =>
+                    o
+                        .setName("channel")
+                        .setDescription("Channel to post memes")
+                        .addChannelTypes(ChannelType.GuildText)
+                        .setRequired(true)
+                )
+                .addIntegerOption((o) =>
+                    o
+                        .setName("interval")
+                        .setDescription("Minutes between posts (default: 120)")
+                        .setMinValue(5)
+                        .setMaxValue(1440)
+                        .setRequired(false)
+                )
+        )
+        .addSubcommand((sub) =>
+            sub.setName("disable").setDescription("Disable auto memes")
+        )
+        .addSubcommand((sub) =>
+            sub.setName("status").setDescription("Check auto meme status")
+        ),
 ].map((c) => c.toJSON());
 
-const rest = new REST({ version: "10" }).setToken(token || "");
-console.log("outside func");
-async function main() {
-    console.log("inside func");
+async function deploy() {
+    const rest = new REST({ version: "10" }).setToken(config.discord.token);
+
     try {
-        if (guildId && applicationId) {
-            console.log("Refreshing guild slash commands");
-            await rest.put(
-                Routes.applicationGuildCommands(applicationId, guildId),
-                { body: commands }
-            );
-            console.log("hitting guildid");
-        } else {
-            console.log("Refreshing global slash commands");
-            await rest.put(Routes.applicationCommands(applicationId), {
-                body: commands,
-            });
-            console.log("hitting no guildid");
-        }
-        console.log("Commands added!");
-    } catch (err) {
-        console.error("Failed to register commands");
+        const route = config.discord.guildId
+            ? Routes.applicationGuildCommands(
+                  config.discord.applicationId,
+                  config.discord.guildId
+              )
+            : Routes.applicationCommands(config.discord.applicationId);
+
+        const scope = config.discord.guildId ? "guild" : "global";
+        console.log(`Deploying ${commands.length} ${scope} commands...`);
+
+        await rest.put(route, { body: commands });
+        console.log(`✅ Commands deployed successfully`);
+    } catch (error) {
+        console.error("❌ Deployment failed:", error);
         process.exit(1);
     }
 }
-main();
+
+deploy();
