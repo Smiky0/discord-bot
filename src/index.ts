@@ -1,12 +1,9 @@
-import "dotenv/config";
-import { Client, Events, GatewayIntentBits } from "discord.js";
+import { ActivityType, Client, Events, GatewayIntentBits } from "discord.js";
 import { config } from "./utils/config.js";
-
 import { fillCache, startScheduler } from "./utils/memeFetcher.js";
 import { initJokeCaches } from "./utils/jokeFetcher.js";
 import { handlePing } from "./commands/ping.js";
 import { handleHelp } from "./commands/help.js";
-
 import { handleMeme } from "./commands/meme.js";
 import { handleMemeAuto } from "./commands/meme-auto.js";
 import { handleJoke } from "./commands/joke.js";
@@ -19,8 +16,18 @@ const client = new Client({
 
 let isReady = false;
 
-client.once(Events.ClientReady, async (c) => {
+client.once(Events.ClientReady, async (c: any) => {
     console.log(`✅ Logged in as ${c.user.tag}`);
+    // set activity
+    client.user?.setPresence({
+        activities: [
+            {
+                name: "meme world",
+                type: ActivityType.Watching,
+            },
+        ],
+        status: "idle",
+    });
 
     try {
         await fillCache();
