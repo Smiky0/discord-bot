@@ -19,11 +19,15 @@ const commands = [
         .setDescription("Get a random da joke"),
 
     new SlashCommandBuilder()
+        .setName("internetlore")
+        .setDescription("Get random internet lore from reddit."),
+
+    new SlashCommandBuilder()
         .setName("meme")
         .setDescription("Get a random meme"),
 
     new SlashCommandBuilder()
-        .setName("meme-auto")
+        .setName("automeme")
         .setDescription("Configure automatic meme posting")
         .addSubcommand((sub) =>
             sub

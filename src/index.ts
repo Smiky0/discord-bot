@@ -11,6 +11,7 @@ import { handleMemeAuto } from "./commands/meme-auto.js";
 import { initJokeCaches } from "./utils/jokeFetcher.js";
 import { handleJoke } from "./commands/joke.js";
 import { handleDadJoke } from "./commands/dadjoke.js";
+import { handleLore } from "./commands/lore.js";
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
@@ -37,10 +38,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 return await handleJoke(interaction);
             case "dadjoke":
                 return await handleDadJoke(interaction);
+            case "internetlore":
+                return await handleLore(interaction);
             case "meme":
                 return await handleMeme(interaction);
-            case "meme-auto":
+            case "automeme":
                 return await handleMemeAuto(interaction);
+            default:
+                return interaction.reply("Wrong command used");
         }
     } catch (error) {
         console.error(`[command] ${interaction.commandName} failed:`, error);
