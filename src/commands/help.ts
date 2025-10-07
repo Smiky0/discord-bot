@@ -8,15 +8,15 @@ export async function handleHelp(interaction: ChatInputCommandInteraction) {
         .addFields(
             { name: "/joke", value: "Get a random joke", inline: false },
             { name: "/dadjoke", value: "Get a random dad joke", inline: false },
+            {
+                name: "/internetlore",
+                value: "Get a lore from reddit",
+                inline: false,
+            },
             { name: "/meme", value: "Post a meme", inline: false },
             {
                 name: "/automeme",
                 value: "Set/Remove channel for posting memes automatically. ",
-                inline: false,
-            },
-            {
-                name: "/internetlore",
-                value: "Get a lore from reddit",
                 inline: false,
             },
             { name: "/ping", value: "Check bot response time", inline: false },
