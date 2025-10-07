@@ -12,7 +12,7 @@ export const config = {
     discord: {
         token: getEnv("TOKEN"),
         applicationId: getEnv("APPLICATION_ID"),
-        guildId: getEnv("GUILD_ID", ""), // optional for dev
+        guildId: getEnv("GUILD_ID", ""), // optional
     },
     redis: {
         url: getEnv("REDIS_URL", "redis://localhost:6379"),

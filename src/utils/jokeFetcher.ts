@@ -8,6 +8,7 @@ const LORE_QUEUE_KEY = "lore:queue";
 const CACHE_TTL = 2 * 60 * 60; // 2 hours
 const BATCH_SIZE = 30;
 const LOW_THRESHOLD = 3;
+const MAX_RETRIES = 3;
 
 type Joke = {
     setup: string;
@@ -34,33 +35,67 @@ type Lore = {
 };
 
 let redis: Redis | null = null;
+let isRedisConnected = false;
 
 function getRedis(): Redis {
     if (!redis) {
-        redis = new Redis(config.redis.url);
-        redis.on("error", (err) => console.error("[redis]", err));
+        redis = new Redis(config.redis.url, {
+            maxRetriesPerRequest: 3,
+            enableReadyCheck: true,
+            retryStrategy: (times) => {
+                if (times > 10) return null;
+                return Math.min(times * 100, 3000);
+            },
+        });
+
+        redis.on("connect", () => {
+            isRedisConnected = true;
+        });
+
+        redis.on("error", (err) => {
+            isRedisConnected = false;
+            console.error("[redis] Error:", err.message);
+        });
+
+        redis.on("close", () => {
+            isRedisConnected = false;
+        });
     }
     return redis;
 }
 
 // Fetch regular jokes from JokeAPI
-async function fetchJokesFromAPI(count: number): Promise<Joke[]> {
+async function fetchJokesFromAPI(count: number, retries = 0): Promise<Joke[]> {
     try {
         const { data } = await axios.get(
             `https://v2.jokeapi.dev/joke/Any?amount=${count}&safe-mode`,
-            { timeout: 10000 }
+            {
+                timeout: 10000,
+                validateStatus: (status) => status === 200,
+            }
         );
 
-        const jokes = data?.jokes ?? [];
-        return jokes.filter((j: Joke) => j?.setup || j?.joke);
-    } catch (err) {
-        console.error("[joke-api] fetch failed:", err);
+        if (!data?.jokes || !Array.isArray(data.jokes)) {
+            throw new Error("Invalid API response");
+        }
+
+        return data.jokes.filter((j: Joke) => j?.setup || j?.joke);
+    } catch (err: any) {
+        if (retries < MAX_RETRIES) {
+            console.warn(`[joke-api] Retry ${retries + 1}/${MAX_RETRIES}`);
+            await new Promise((r) => setTimeout(r, 1000 * (retries + 1)));
+            return fetchJokesFromAPI(count, retries + 1);
+        }
+        console.error("[joke-api] Failed after retries:", err.message);
         return [];
     }
 }
 
 // Fetch dad jokes from icanhazdadjoke API
-async function fetchDadJokesFromAPI(count: number): Promise<DadJoke[]> {
+async function fetchDadJokesFromAPI(
+    count: number,
+    retries = 0
+): Promise<DadJoke[]> {
     try {
         const jokes: DadJoke[] = [];
         for (let i = 0; i < count; i++) {
@@ -73,7 +108,12 @@ async function fetchDadJokesFromAPI(count: number): Promise<DadJoke[]> {
             }
         }
         return jokes;
-    } catch (err) {
+    } catch (err: any) {
+        if (retries < MAX_RETRIES) {
+            console.warn(`[dadjoke-api] Retry ${retries + 1}/${MAX_RETRIES}`);
+            await new Promise((r) => setTimeout(r, 1000 * (retries + 1)));
+            return fetchDadJokesFromAPI(count, retries + 1);
+        }
         console.error("[dadjoke-api] fetch failed:", err);
         return [];
     }
