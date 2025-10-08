@@ -81,7 +81,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 return await handleHelp(interaction);
             case "meme":
                 return await handleMeme(interaction);
-            case "meme-auto":
+            case "automeme":
                 return await handleMemeAuto(interaction);
             case "joke":
                 return await handleJoke(interaction);
