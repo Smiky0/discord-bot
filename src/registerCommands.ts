@@ -1,4 +1,10 @@
-import { REST, Routes, SlashCommandBuilder, ChannelType } from "discord.js";
+import {
+    REST,
+    Routes,
+    SlashCommandBuilder,
+    ChannelType,
+    Guild,
+} from "discord.js";
 import { config } from "./utils/config.js";
 
 const commands = [
@@ -57,18 +63,18 @@ const commands = [
         ),
 ].map((c) => c.toJSON());
 
-async function deploy() {
+export async function deployCommands(guildId: Guild["id"]) {
     const rest = new REST({ version: "10" }).setToken(config.discord.token);
 
     try {
-        const route = config.discord.guildId
+        const route = guildId
             ? Routes.applicationGuildCommands(
                   config.discord.applicationId,
-                  config.discord.guildId
+                  guildId
               )
             : Routes.applicationCommands(config.discord.applicationId);
 
-        const scope = config.discord.guildId ? "guild" : "global";
+        const scope = guildId ? "guild" : "global";
         console.log(`Deploying ${commands.length} ${scope} commands...`);
 
         await rest.put(route, { body: commands });
@@ -78,5 +84,3 @@ async function deploy() {
         process.exit(1);
     }
 }
-
-deploy();

@@ -1,4 +1,9 @@
-import { ActivityType, Client, Events, GatewayIntentBits } from "discord.js";
+import {
+    ActivityType,
+    Client,
+    Events,
+    GatewayIntentBits,
+} from "discord.js";
 import { config } from "./utils/config.js";
 import { fillCache, startScheduler } from "./utils/memeFetcher.js";
 import { initJokeCaches } from "./utils/jokeFetcher.js";
@@ -9,6 +14,7 @@ import { handleMemeAuto } from "./commands/meme-auto.js";
 import { handleJoke } from "./commands/joke.js";
 import { handleDadJoke } from "./commands/dadjoke.js";
 import { handleLore } from "./commands/lore.js";
+import { deployCommands } from "../src/registerCommands.js";
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
@@ -16,17 +22,18 @@ const client = new Client({
 
 let isReady = false;
 
+// connects bot
 client.once(Events.ClientReady, async (c: any) => {
     console.log(`✅ Logged in as ${c.user.tag}`);
     // set activity
     client.user?.setPresence({
         activities: [
             {
-                name: "meme world",
+                name: "the Memeverse 🌐 | /help",
                 type: ActivityType.Watching,
             },
         ],
-        status: "idle",
+        status: "online",
     });
 
     try {
@@ -46,6 +53,19 @@ client.once(Events.ClientReady, async (c: any) => {
     isReady = true;
 });
 
+// Whenever the bot joins a new guild
+client.on("guildCreate", async (guild) => {
+    console.log(`Joined new guild: ${guild.name} (${guild.id})`);
+
+    try {
+        await deployCommands(guild.id);
+        console.log(`Registered commands in ${guild.name}`);
+    } catch (error) {
+        console.error(`Failed to register commands for ${guild.name}:`, error);
+    }
+});
+
+// starting up
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     if (!isReady) {
@@ -57,7 +77,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
             })
             .catch(() => {});
     }
-
+    // commands
     try {
         switch (interaction.commandName) {
             case "ping":
@@ -74,6 +94,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 return await handleDadJoke(interaction);
             case "lore":
                 return await handleLore(interaction);
+            default:
+                return interaction.reply("Wrong command used.");
         }
     } catch (error: any) {
         console.error(
