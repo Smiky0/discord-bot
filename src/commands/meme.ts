@@ -1,4 +1,4 @@
-import { MessageFlags, type ChatInputCommandInteraction } from "discord.js";
+import { type ChatInputCommandInteraction } from "discord.js";
 import { popMeme } from "../utils/memeFetcher.js";
 import { EmbedBuilder } from "discord.js";
 
