@@ -1,9 +1,4 @@
-import {
-    ActivityType,
-    Client,
-    Events,
-    GatewayIntentBits,
-} from "discord.js";
+import { ActivityType, Client, Events, GatewayIntentBits } from "discord.js";
 import { config } from "./utils/config.js";
 import { fillCache, startScheduler } from "./utils/memeFetcher.js";
 import { initJokeCaches } from "./utils/jokeFetcher.js";
@@ -14,7 +9,7 @@ import { handleMemeAuto } from "./commands/meme-auto.js";
 import { handleJoke } from "./commands/joke.js";
 import { handleDadJoke } from "./commands/dadjoke.js";
 import { handleLore } from "./commands/lore.js";
-import { deployCommands } from "../src/registerCommands.js";
+import { deployCommands } from "./registerCommands.js";
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
@@ -29,8 +24,8 @@ client.once(Events.ClientReady, async (c: any) => {
     client.user?.setPresence({
         activities: [
             {
-                name: "the Memeverse 🌐 | /help",
-                type: ActivityType.Watching,
+                name: "/help",
+                type: ActivityType.Listening,
             },
         ],
         status: "online",
