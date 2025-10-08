@@ -1,6 +1,5 @@
 import axios from "axios";
-import Redis from "ioredis";
-import { config } from "./config.js";
+import { redis } from "./redisClient.js";
 
 const JOKE_QUEUE_KEY = "jokes:queue";
 const DADJOKE_QUEUE_KEY = "dadjokes:queue";
@@ -34,37 +33,7 @@ type Lore = {
     hasText: boolean;
 };
 
-let redis: Redis | null = null;
-let isRedisConnected = false;
-
-function getRedis(): Redis {
-    if (!redis) {
-        redis = new Redis(config.redis.url, {
-            maxRetriesPerRequest: 3,
-            enableReadyCheck: true,
-            retryStrategy: (times) => {
-                if (times > 10) return null;
-                return Math.min(times * 100, 3000);
-            },
-        });
-
-        redis.on("connect", () => {
-            isRedisConnected = true;
-        });
-
-        redis.on("error", (err) => {
-            isRedisConnected = false;
-            console.error("[redis] Error:", err.message);
-        });
-
-        redis.on("close", () => {
-            isRedisConnected = false;
-        });
-    }
-    return redis;
-}
-
-// Fetch regular jokes from JokeAPI
+/** Fetch regular jokes from JokeAPI */
 async function fetchJokesFromAPI(count: number, retries = 0): Promise<Joke[]> {
     try {
         const { data } = await axios.get(
@@ -91,7 +60,7 @@ async function fetchJokesFromAPI(count: number, retries = 0): Promise<Joke[]> {
     }
 }
 
-// Fetch dad jokes from icanhazdadjoke API
+/** Fetch dad jokes from icanhazdadjoke */
 async function fetchDadJokesFromAPI(
     count: number,
     retries = 0
@@ -119,43 +88,29 @@ async function fetchDadJokesFromAPI(
     }
 }
 
-// Helper to extract image URL from Reddit post
+/** Extract image URL from Reddit post */
 function extractImageUrl(post: any): string | undefined {
-    // Direct image URL (imgur, reddit media, etc)
-    if (post.url && /\.(jpg|jpeg|png|gif|webp)$/i.test(post.url)) {
+    if (post.url && /\.(jpg|jpeg|png|gif|webp)$/i.test(post.url))
         return post.url;
-    }
 
-    // Reddit gallery
     if (post.is_gallery && post.media_metadata) {
-        const imageIds = Object.keys(post.media_metadata);
-        if (imageIds.length > 0) {
-            const firstImageId = imageIds[0]!; // Non-null assertion since we checked length
-            const imageData = post.media_metadata[firstImageId];
-            if (imageData?.s?.u) {
-                return imageData.s.u.replace(/&amp;/g, "&");
-            }
-        }
+        const firstKey = Object.keys(post.media_metadata)[0]!;
+        const img = post.media_metadata[firstKey];
+        if (img?.s?.u) return img.s.u.replace(/&amp;/g, "&");
     }
 
-    // Preview images
-    if (post.preview?.images?.[0]?.source?.url) {
+    if (post.preview?.images?.[0]?.source?.url)
         return post.preview.images[0].source.url.replace(/&amp;/g, "&");
-    }
 
-    // Reddit i.redd.it links
-    if (post.url && post.url.includes("i.redd.it")) {
-        return post.url;
-    }
+    if (post.url && post.url.includes("i.redd.it")) return post.url;
 
     return undefined;
 }
 
-// Fetch lore from Reddit with strong text preference
+/** Fetch lore (text-focused Reddit posts) */
 async function fetchLoreFromReddit(): Promise<Lore[]> {
     try {
-        // Text-focused subreddits (prioritize these)
-        const textSubs = [
+        const subs = [
             "tumblr",
             "CuratedTumblr",
             "BrandNewSentence",
@@ -168,7 +123,7 @@ async function fetchLoreFromReddit(): Promise<Lore[]> {
 
         const allLore: Lore[] = [];
 
-        for (const sub of textSubs) {
+        for (const sub of subs) {
             try {
                 const { data } = await axios.get(
                     `https://www.reddit.com/r/${sub}/hot.json?limit=50`,
@@ -181,37 +136,22 @@ async function fetchLoreFromReddit(): Promise<Lore[]> {
                 );
 
                 const posts = data?.data?.children ?? [];
-
                 for (const post of posts) {
                     const p = post.data;
-
-                    // Skip NSFW, removed, deleted, stickied
                     if (
                         p.over_18 ||
                         p.stickied ||
                         p.removed_by_category ||
                         p.author === "[deleted]"
-                    ) {
+                    )
                         continue;
-                    }
 
-                    // Check for meaningful text content
                     const hasText = !!(
                         p.selftext && p.selftext.trim().length > 30
                     );
-
-                    // Extract image if exists
                     const imageUrl = extractImageUrl(p);
-
-                    // Must have either substantial text OR an image
-                    if (!hasText && !imageUrl) {
-                        continue;
-                    }
-
-                    // For image posts from text subs, require good title
-                    if (!hasText && imageUrl && p.title.length < 20) {
-                        continue;
-                    }
+                    if (!hasText && !imageUrl) continue;
+                    if (!hasText && imageUrl && p.title.length < 20) continue;
 
                     allLore.push({
                         title: p.title,
@@ -229,7 +169,6 @@ async function fetchLoreFromReddit(): Promise<Lore[]> {
             }
         }
 
-        // Sort: text posts first (by score), then image posts (by score)
         const textPosts = allLore
             .filter((l) => l.hasText)
             .sort((a, b) => b.score - a.score);
@@ -237,13 +176,11 @@ async function fetchLoreFromReddit(): Promise<Lore[]> {
             .filter((l) => !l.hasText && l.imageUrl)
             .sort((a, b) => b.score - a.score);
 
-        // Take 85% text, 15% images to strongly favor text
         const textCount = Math.min(
             textPosts.length,
             Math.ceil(BATCH_SIZE * 0.85)
         );
         const imageCount = Math.min(imagePosts.length, BATCH_SIZE - textCount);
-
         const result = [
             ...textPosts.slice(0, textCount),
             ...imagePosts.slice(0, imageCount),
@@ -259,46 +196,41 @@ async function fetchLoreFromReddit(): Promise<Lore[]> {
     }
 }
 
-// Fill regular jokes cache
+/** Cache fillers */
 export async function fillJokesCache(count = BATCH_SIZE): Promise<number> {
     const jokes = await fetchJokesFromAPI(count);
     if (!jokes.length) return 0;
 
-    const r = getRedis();
-    const pipeline = r.pipeline();
-    jokes.forEach((j) => pipeline.rpush(JOKE_QUEUE_KEY, JSON.stringify(j)));
-    pipeline.expire(JOKE_QUEUE_KEY, CACHE_TTL);
-    await pipeline.exec();
+    const multi = redis.multi();
+    jokes.forEach((j) => multi.rPush(JOKE_QUEUE_KEY, JSON.stringify(j)));
+    multi.expire(JOKE_QUEUE_KEY, CACHE_TTL);
+    await multi.exec();
 
     console.log(`[joke-cache] Added ${jokes.length} jokes`);
     return jokes.length;
 }
 
-// Fill dad jokes cache
 export async function fillDadJokesCache(count = BATCH_SIZE): Promise<number> {
     const jokes = await fetchDadJokesFromAPI(count);
     if (!jokes.length) return 0;
 
-    const r = getRedis();
-    const pipeline = r.pipeline();
-    jokes.forEach((j) => pipeline.rpush(DADJOKE_QUEUE_KEY, JSON.stringify(j)));
-    pipeline.expire(DADJOKE_QUEUE_KEY, CACHE_TTL);
-    await pipeline.exec();
+    const multi = redis.multi();
+    jokes.forEach((j) => multi.rPush(DADJOKE_QUEUE_KEY, JSON.stringify(j)));
+    multi.expire(DADJOKE_QUEUE_KEY, CACHE_TTL);
+    await multi.exec();
 
     console.log(`[dadjoke-cache] Added ${jokes.length} dad jokes`);
     return jokes.length;
 }
 
-// Fill lore cache
 export async function fillLoreCache(): Promise<number> {
     const lore = await fetchLoreFromReddit();
     if (!lore.length) return 0;
 
-    const r = getRedis();
-    const pipeline = r.pipeline();
-    lore.forEach((l) => pipeline.rpush(LORE_QUEUE_KEY, JSON.stringify(l)));
-    pipeline.expire(LORE_QUEUE_KEY, CACHE_TTL);
-    await pipeline.exec();
+    const multi = redis.multi();
+    lore.forEach((l) => multi.rPush(LORE_QUEUE_KEY, JSON.stringify(l)));
+    multi.expire(LORE_QUEUE_KEY, CACHE_TTL);
+    await multi.exec();
 
     const textCount = lore.filter((l) => l.hasText).length;
     const imageCount = lore.length - textCount;
@@ -308,20 +240,19 @@ export async function fillLoreCache(): Promise<number> {
     return lore.length;
 }
 
-// Pop a regular joke
+/** Pop helpers */
 export async function popJoke(): Promise<Joke | null> {
-    const r = getRedis();
-    let raw = await r.lpop(JOKE_QUEUE_KEY);
+    let raw = await redis.lPop(JOKE_QUEUE_KEY);
 
     if (!raw) {
         console.log("[joke-cache] Empty, refilling...");
         await fillJokesCache();
-        raw = await r.lpop(JOKE_QUEUE_KEY);
+        raw = await redis.lPop(JOKE_QUEUE_KEY);
     }
 
     if (!raw) return null;
 
-    const remaining = await r.llen(JOKE_QUEUE_KEY);
+    const remaining = await redis.lLen(JOKE_QUEUE_KEY);
     if (remaining < LOW_THRESHOLD) void fillJokesCache();
 
     try {
@@ -331,20 +262,18 @@ export async function popJoke(): Promise<Joke | null> {
     }
 }
 
-// Pop a dad joke
 export async function popDadJoke(): Promise<DadJoke | null> {
-    const r = getRedis();
-    let raw = await r.lpop(DADJOKE_QUEUE_KEY);
+    let raw = await redis.lPop(DADJOKE_QUEUE_KEY);
 
     if (!raw) {
         console.log("[dadjoke-cache] Empty, refilling...");
         await fillDadJokesCache();
-        raw = await r.lpop(DADJOKE_QUEUE_KEY);
+        raw = await redis.lPop(DADJOKE_QUEUE_KEY);
     }
 
     if (!raw) return null;
 
-    const remaining = await r.llen(DADJOKE_QUEUE_KEY);
+    const remaining = await redis.lLen(DADJOKE_QUEUE_KEY);
     if (remaining < LOW_THRESHOLD) void fillDadJokesCache();
 
     try {
@@ -354,20 +283,18 @@ export async function popDadJoke(): Promise<DadJoke | null> {
     }
 }
 
-// Pop a lore post
 export async function popLore(): Promise<Lore | null> {
-    const r = getRedis();
-    let raw = await r.lpop(LORE_QUEUE_KEY);
+    let raw = await redis.lPop(LORE_QUEUE_KEY);
 
     if (!raw) {
         console.log("[lore-cache] Empty, refilling...");
         await fillLoreCache();
-        raw = await r.lpop(LORE_QUEUE_KEY);
+        raw = await redis.lPop(LORE_QUEUE_KEY);
     }
 
     if (!raw) return null;
 
-    const remaining = await r.llen(LORE_QUEUE_KEY);
+    const remaining = await redis.lLen(LORE_QUEUE_KEY);
     if (remaining < LOW_THRESHOLD) void fillLoreCache();
 
     try {
@@ -377,7 +304,7 @@ export async function popLore(): Promise<Lore | null> {
     }
 }
 
-// Initialize all caches on bot startup
+/** Initialize all caches on startup */
 export async function initJokeCaches() {
     console.log("[caches] Initializing joke and lore caches...");
     await Promise.all([fillJokesCache(), fillDadJokesCache(), fillLoreCache()]);

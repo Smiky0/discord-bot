@@ -1,5 +1,5 @@
 import { REST, Routes, SlashCommandBuilder, ChannelType } from "discord.js";
-import { config } from "./utils/config";
+import { config } from "./utils/config.js";
 
 const commands = [
     new SlashCommandBuilder()

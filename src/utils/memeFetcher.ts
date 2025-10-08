@@ -1,7 +1,6 @@
 import axios from "axios";
-import Redis from "ioredis";
 import { EmbedBuilder, type Client } from "discord.js";
-import { config } from "./config.js";
+import { redis } from "./redisClient.js";
 
 const MEME_API = "https://meme-api.com/gimme/memes";
 const QUEUE_KEY = "memes:queue";
@@ -30,41 +29,7 @@ type AutoConfig = {
     nextAt: number;
 };
 
-let redis: Redis | null = null;
-let isRedisConnected = false;
-
-function getRedis(): Redis {
-    if (!redis) {
-        redis = new Redis(config.redis.url, {
-            maxRetriesPerRequest: 3,
-            enableReadyCheck: true,
-            retryStrategy: (times) => {
-                if (times > 10) {
-                    console.error("[redis] Max retry attempts reached");
-                    return null;
-                }
-                return Math.min(times * 100, 3000);
-            },
-        });
-
-        redis.on("connect", () => {
-            isRedisConnected = true;
-            console.log("✅ Redis connected");
-        });
-
-        redis.on("error", (err) => {
-            isRedisConnected = false;
-            console.error("[redis] Error:", err.message);
-        });
-
-        redis.on("close", () => {
-            isRedisConnected = false;
-            console.warn("[redis] Connection closed");
-        });
-    }
-    return redis;
-}
-
+// --- Fetch from API ---
 async function fetchFromAPI(count: number, retries = 0): Promise<Meme[]> {
     try {
         const { data } = await axios.get(`${MEME_API}/${count}`, {
@@ -92,19 +57,14 @@ async function fetchFromAPI(count: number, retries = 0): Promise<Meme[]> {
     }
 }
 
+// --- Cache management ---
 export async function fillCache(count = BATCH_SIZE): Promise<number> {
-    if (!isRedisConnected) {
-        console.warn("[meme-cache] Redis not connected, skipping cache fill");
-        return 0;
-    }
-
     try {
         const memes = await fetchFromAPI(count);
         if (!memes.length) return 0;
 
-        const r = getRedis();
-        const pipeline = r.pipeline();
-        memes.forEach((m) => pipeline.rpush(QUEUE_KEY, JSON.stringify(m)));
+        const pipeline = redis.multi();
+        memes.forEach((m) => pipeline.rPush(QUEUE_KEY, JSON.stringify(m)));
         pipeline.expire(QUEUE_KEY, CACHE_TTL);
         await pipeline.exec();
 
@@ -117,26 +77,19 @@ export async function fillCache(count = BATCH_SIZE): Promise<number> {
 }
 
 export async function popMeme(): Promise<Meme | null> {
-    if (!isRedisConnected) {
-        console.warn("[meme-cache] Redis not connected");
-        return null;
-    }
-
     try {
-        const r = getRedis();
-        let raw = await r.lpop(QUEUE_KEY);
+        let raw = await redis.lPop(QUEUE_KEY);
 
         if (!raw) {
             console.log("[meme-cache] Empty, refilling...");
             const filled = await fillCache();
             if (filled === 0) return null;
-            raw = await r.lpop(QUEUE_KEY);
+            raw = await redis.lPop(QUEUE_KEY);
         }
 
         if (!raw) return null;
 
-        // Background refill when low
-        const remaining = await r.llen(QUEUE_KEY);
+        const remaining = await redis.lLen(QUEUE_KEY);
         if (remaining < LOW_THRESHOLD) {
             void fillCache().catch((err) =>
                 console.error("[meme-cache] Background refill failed:", err)
@@ -150,6 +103,7 @@ export async function popMeme(): Promise<Meme | null> {
     }
 }
 
+// --- Discord Embeds ---
 function createEmbed(meme: Meme) {
     const isNsfw = meme.nsfw || meme.spoiler;
 
@@ -175,6 +129,7 @@ function createEmbed(meme: Meme) {
     return embed;
 }
 
+// --- Send Meme ---
 export async function sendMeme(
     client: Client,
     channelId: string
@@ -184,15 +139,8 @@ export async function sendMeme(
             .fetch(channelId)
             .catch(() => null);
 
-        if (!channel) {
-            console.warn(
-                `[meme] Channel ${channelId} not found or inaccessible`
-            );
-            return false;
-        }
-
-        if (!("send" in channel)) {
-            console.warn(`[meme] Channel ${channelId} doesn't support sending`);
+        if (!channel || !("send" in channel)) {
+            console.warn(`[meme] Invalid or inaccessible channel ${channelId}`);
             return false;
         }
 
@@ -210,102 +158,61 @@ export async function sendMeme(
     }
 }
 
+// --- Auto Meme ---
 export async function setAutoMeme(
     guildId: string,
     channelId: string,
     intervalMin = 120
 ) {
-    if (!isRedisConnected) {
-        throw new Error("Redis connection unavailable");
-    }
+    const cfg: AutoConfig = {
+        channelId,
+        intervalMs: Math.max(5, Math.min(1440, intervalMin)) * 60_000,
+        nextAt: Date.now() + 60_000,
+    };
 
-    try {
-        const cfg: AutoConfig = {
-            channelId,
-            intervalMs: Math.max(5, Math.min(1440, intervalMin)) * 60_000,
-            nextAt: Date.now() + 60_000,
-        };
-
-        const r = getRedis();
-        await r.sadd(AUTO_GUILDS, guildId);
-        await r.set(AUTO_CFG(guildId), JSON.stringify(cfg));
-        console.log(`[meme-auto] Enabled for guild ${guildId}`);
-    } catch (err: any) {
-        console.error("[meme-auto] Set failed:", err.message);
-        throw err;
-    }
+    await redis.sAdd(AUTO_GUILDS, guildId);
+    await redis.set(AUTO_CFG(guildId), JSON.stringify(cfg));
+    console.log(`[meme-auto] Enabled for guild ${guildId}`);
 }
 
 export async function disableAutoMeme(guildId: string) {
-    if (!isRedisConnected) {
-        throw new Error("Redis connection unavailable");
-    }
-
-    try {
-        const r = getRedis();
-        await r.srem(AUTO_GUILDS, guildId);
-        await r.del(AUTO_CFG(guildId));
-        console.log(`[meme-auto] Disabled for guild ${guildId}`);
-    } catch (err: any) {
-        console.error("[meme-auto] Disable failed:", err.message);
-        throw err;
-    }
+    await redis.sRem(AUTO_GUILDS, guildId);
+    await redis.del(AUTO_CFG(guildId));
+    console.log(`[meme-auto] Disabled for guild ${guildId}`);
 }
 
 export async function getAutoConfig(
     guildId: string
 ): Promise<AutoConfig | null> {
-    if (!isRedisConnected) return null;
-
-    try {
-        const r = getRedis();
-        const raw = await r.get(AUTO_CFG(guildId));
-        if (!raw) return null;
-        return JSON.parse(raw);
-    } catch (err: any) {
-        console.error("[meme-auto] Get config failed:", err.message);
-        return null;
-    }
+    const raw = await redis.get(AUTO_CFG(guildId));
+    return raw ? JSON.parse(raw) : null;
 }
 
+// --- Scheduler ---
 export function startScheduler(client: Client) {
-    const r = getRedis();
-
-    // Warm cache on boot (non-blocking)
+    // Warm cache on startup
     void fillCache().catch((err) =>
         console.error("[scheduler] Initial fill failed:", err)
     );
 
     const tick = async () => {
-        if (!isRedisConnected) {
-            console.warn("[scheduler] Skipping tick, Redis disconnected");
-            return;
-        }
-
         try {
-            const guilds = await r.smembers(AUTO_GUILDS);
+            const guilds = await redis.sMembers(AUTO_GUILDS);
             const now = Date.now();
 
             for (const gid of guilds) {
-                try {
-                    const raw = await r.get(AUTO_CFG(gid));
-                    if (!raw) {
-                        await r.srem(AUTO_GUILDS, gid);
-                        continue;
-                    }
-
-                    const cfg: AutoConfig = JSON.parse(raw);
-                    if (now < cfg.nextAt) continue;
-
-                    const ok = await sendMeme(client, cfg.channelId);
-                    cfg.nextAt = now + (ok ? cfg.intervalMs : 5 * 60_000);
-                    await r.set(AUTO_CFG(gid), JSON.stringify(cfg));
-                } catch (err: any) {
-                    console.error(
-                        `[scheduler] Error processing guild ${gid}:`,
-                        err.message
-                    );
+                const raw = await redis.get(AUTO_CFG(gid));
+                if (!raw) {
+                    await redis.sRem(AUTO_GUILDS, gid);
+                    continue;
                 }
+
+                const cfg: AutoConfig = JSON.parse(raw);
+                if (now < cfg.nextAt) continue;
+
+                const ok = await sendMeme(client, cfg.channelId);
+                cfg.nextAt = now + (ok ? cfg.intervalMs : 5 * 60_000);
+                await redis.set(AUTO_CFG(gid), JSON.stringify(cfg));
             }
         } catch (err: any) {
             console.error("[scheduler] Tick error:", err.message);

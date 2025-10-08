@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  bot:
+    build: .
+    container_name: discord-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - redis
+    networks:
+      - bot-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: discord-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - bot-net
+
+volumes:
+  redis-data:
+
+networks:
+  bot-net:
+    driver: bridge
