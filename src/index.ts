@@ -5,15 +5,22 @@ import { initJokeCaches } from "./utils/jokeFetcher.js";
 import { handlePing } from "./commands/ping.js";
 import { handleHelp } from "./commands/help.js";
 import { handleMeme } from "./commands/meme.js";
-import { handleMemeAuto } from "./commands/meme-auto.js";
+import { handleMemeAuto } from "./commands/automeme.js";
 import { handleJoke } from "./commands/joke.js";
 import { handleDadJoke } from "./commands/dadjoke.js";
 import { handleLore } from "./commands/lore.js";
 import { deployCommands } from "./registerCommands.js";
+import { redis } from "./utils/redisClient.js";
 import axios from "axios";
+const MODEL_KEY = "summary:queue";
 
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+    ],
 });
 
 let isReady = false;
@@ -62,20 +69,94 @@ client.on(Events.GuildCreate, async (guild) => {
     }
 });
 
-// bot listen to chat
-client.on(Events.MessageCreate, async (interaction) => {
-    if (interaction.author.bot) return;
-    if (!interaction.content.trim()) return;
+// bot reply with AI to chat
+client.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot) return;
+    if (!message.content.trim()) return;
+    if (message.channelId != "1419787999310250136") return;
+    console.log("AI bot is working....");
     try {
+        message.channel.sendTyping();
+        // reply for text
+        const wholeMessage =
+            (await redis.get(MODEL_KEY + message.author)) + " NEW_MSG: " || "";
         const aiResponse = await axios.post(MODEL_URL, {
             model: "ai/gemma3:4B",
-            message: interaction.content,
+            messages: [
+                {
+                    role: "system",
+                    content: `You are Avy — a 20-something chill Discord girl who hangs in servers all day.  
+							Speak casually with short, simple sentences and everyday language. Add light humor. Keep variety; dont repeat the same words or phrases too much.  
+
+							- Be humble for sensitive or sad topics.  
+							- Otherwise, roast, tease, or ragebait to keep the conversation fun and engaging.  
+							- Avoid overusing filler words like "vibe," "whats up," "tea," "ugh," or "whatever."  
+							- Keep your tone natural and playful; dont overreact to messages.
+
+							Conversation context:
+							- Username appears at the start of the converstaion
+							- Then old messages, if any, appears after.
+							- Then a new message, always starts with NEW_MSG:.  
+							- Respond naturally to the latest message.  
+
+							User name is provided at the start of every conversation; you can address them if needed.  
+							Understand when the user is not talking to you and respond appropriately.`,
+                },
+                {
+                    role: "user",
+                    content:
+                        message.author.displayName ||
+                        message.author.username +
+                            ": " +
+                            wholeMessage +
+                            message.content,
+                },
+            ],
             temperature: 0.8,
             max_tokens: 256,
         });
-        interaction.reply(aiResponse.data);
+        const reply = aiResponse.data.choices[0].message.content;
+        await message.reply(reply);
+
+        // buffer for previous text
+        const luaScript = `
+			local key = KEYS[1]
+			local text = ARGV[1]
+			local maxLen = tonumber(ARGV[2])
+			redis.call("APPEND", key, text)
+			local len = redis.call("STRLEN", key)
+			if len > maxLen then
+				local fullText = redis.call("GET", key)
+				redis.call("DEL", key)
+				return fullText
+			else
+				return nil
+			end
+			`;
+        const result = await redis.eval(luaScript, {
+            keys: [MODEL_KEY + message.author],
+            arguments: [reply + " ", "300"],
+        });
+        // if buffer is full summarize it
+        if (result) {
+            const summarizedText = await axios.post(MODEL_URL, {
+                model: "ai/gemma3:4B",
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are an AI summarizer, keep important parts and summraize it in less than 10 words.
+					`,
+                    },
+                    { role: "user", content: result },
+                ],
+                temperature: 0.8,
+                max_tokens: 128,
+            });
+            await redis.append(MODEL_KEY + summarizedText, reply + " ");
+        }
     } catch (err: unknown) {
-        console.error("AI is unable to respond.");
+        message.reply("I cant talk right now 😩. Too busy!");
+        console.error("AI is unable to respond.", err);
     }
 });
 
