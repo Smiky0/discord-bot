@@ -11,7 +11,6 @@ import { handleDadJoke } from "./commands/dadjoke.js";
 import { handleLore } from "./commands/lore.js";
 import { deployCommands } from "./registerCommands.js";
 import axios from "axios";
-import { EventEmitter } from "stream";
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
