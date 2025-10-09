@@ -91,7 +91,6 @@ export async function handleMemeAuto(interaction: ChatInputCommandInteraction) {
             await setAutoMeme(guildId, channel.id, interval);
             return interaction.reply({
                 content: `✅ Auto memes enabled in <#${channel.id}> every ${interval} minutes.`,
-                flags: MessageFlags.Ephemeral,
             });
         }
 
@@ -107,7 +106,6 @@ export async function handleMemeAuto(interaction: ChatInputCommandInteraction) {
             await disableAutoMeme(guildId);
             return interaction.reply({
                 content: "✅ Auto memes disabled.",
-                flags: MessageFlags.Ephemeral,
             });
         }
 

@@ -6,6 +6,7 @@
     "main": "src/index.js",
     "scripts": {
         "dev": "tsx watch src/index.ts",
+        "test": "tsx watch test/indexTest.ts",
         "build": "tsc -p tsconfig.json",
         "start": "node dist/index.js",
         "deploy:commands": "tsx src/registerCommands.ts"

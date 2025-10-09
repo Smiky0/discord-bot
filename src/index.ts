@@ -10,12 +10,15 @@ import { handleJoke } from "./commands/joke.js";
 import { handleDadJoke } from "./commands/dadjoke.js";
 import { handleLore } from "./commands/lore.js";
 import { deployCommands } from "./registerCommands.js";
+import axios from "axios";
+import { EventEmitter } from "stream";
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
 });
 
 let isReady = false;
+const MODEL_URL = process.env.MODEL_URL || "http://localhost:12434/";
 
 // connects bot
 client.once(Events.ClientReady, async (c: any) => {
@@ -49,9 +52,9 @@ client.once(Events.ClientReady, async (c: any) => {
 });
 
 // Whenever the bot joins a new guild
-client.on("guildCreate", async (guild) => {
+client.on(Events.GuildCreate, async (guild) => {
     console.log(`Joined new guild: ${guild.name} (${guild.id})`);
-
+    // deploy commands
     try {
         await deployCommands(guild.id);
         console.log(`Registered commands in ${guild.name}`);
@@ -60,7 +63,24 @@ client.on("guildCreate", async (guild) => {
     }
 });
 
-// starting up
+// bot listen to chat
+client.on(Events.MessageCreate, async (interaction) => {
+    if (interaction.author.bot) return;
+    if (!interaction.content.trim()) return;
+    try {
+        const aiResponse = await axios.post(MODEL_URL, {
+            model: "ai/gemma3:4B",
+            message: interaction.content,
+            temperature: 0.8,
+            max_tokens: 256,
+        });
+        interaction.reply(aiResponse.data);
+    } catch (err: unknown) {
+        console.error("AI is unable to respond.");
+    }
+});
+
+// bot commands
 client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
     if (!isReady) {
