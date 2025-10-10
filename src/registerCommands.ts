@@ -61,6 +61,29 @@ const commands = [
         .addSubcommand((sub) =>
             sub.setName("status").setDescription("Check auto meme status")
         ),
+    new SlashCommandBuilder()
+        .setName("aichat")
+        .setDescription("Configure AI chat channel.")
+        .addSubcommand((sub) =>
+            sub
+                .setName("set")
+                .setDescription("Enable AI chat.")
+                .addChannelOption((o) =>
+                    o
+                        .setName("channel")
+                        .setDescription("Channel to enable AI chat on.")
+                        .addChannelTypes(ChannelType.GuildText)
+                        .setRequired(true)
+                )
+        )
+        .addSubcommand((sub) =>
+            sub.setName("disable").setDescription("Disable AI chat.")
+        )
+        .addSubcommand((sub) =>
+            sub
+                .setName("status")
+                .setDescription("Check AI chat channel status.")
+        ),
 ].map((c) => c.toJSON());
 
 export async function deployCommands(guildId: Guild["id"]) {
