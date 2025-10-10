@@ -1,8 +1,93 @@
 import { Client, Events } from "discord.js";
 import axios from "axios";
 import { redis } from "./redisClient.js";
-const MODEL_KEY = "summary:queue";
+
 const MODEL_URL = process.env.MODEL_URL || "http://localhost:12434/";
+const MAX_MESSAGES = 20; // per channel message limit
+const HISTORY_KEY = (guildId: string, channelId: string) =>
+    `channel:history:${guildId}:${channelId}`;
+
+// fetch and parse channel history from Redis
+async function getChannelHistory(guildId: string, channelId: string) {
+    const raw = await redis.get(HISTORY_KEY(guildId, channelId));
+    return raw ? JSON.parse(raw) : [];
+}
+
+// save channel history to Redis
+async function saveChannelHistory(
+    guildId: string,
+    channelId: string,
+    history: any[]
+) {
+    if (history.length > MAX_MESSAGES) {
+        history = history.slice(-MAX_MESSAGES);
+    }
+    await redis.set(HISTORY_KEY(guildId, channelId), JSON.stringify(history), {
+        EX: 60,
+    }); // set ttl time
+    return history;
+}
+
+// per-channel queues
+const channelQueues: Record<string, any[]> = {};
+const channelProcessing: Record<string, boolean> = {};
+
+async function processQueue(guildId: string, channelId: string) {
+    const key = `${guildId}:${channelId}`;
+    if (channelProcessing[key]) return; // already processing
+
+    channelProcessing[key] = true;
+
+    while (channelQueues[key] && channelQueues[key].length > 0) {
+        const { message, history } = channelQueues[key].shift();
+
+        // construct payload for AI
+        const payload = {
+            model: "ai/gemma3:4B",
+            messages: [
+                {
+                    role: "system",
+                    content: `You are Avy — a 20-something chill Discord girl who hangs in servers all day.  
+							Speak casually with short(less than one second humanly readable replies), simple sentences and everyday language. Add light humor. Keep variety; dont repeat the same words or phrases too much.  
+							- Be humble for sensitive or sad topics.
+							- Otherwise, roast, or ragebait to keep the conversation fun and engaging.  
+							- Avoid overusing filler words like "vibe," "whats up," "tea," "ugh," or "whatever."  
+							- Keep your tone natural and playful; dont over-react to messages.  
+							You can address them while replying if needed.
+							Understand when the user is not talking to you and respond appropriately.`,
+                },
+                ...history.map((msg: any) => {
+                    if (msg.role === "assistant")
+                        return { role: "assistant", content: msg.content };
+                    return {
+                        role: "user",
+                        content: `${msg.user}: ${msg.content}`,
+                    };
+                }),
+            ],
+            temperature: 0.7,
+            max_tokens: 256,
+        };
+
+        try {
+            message.channel.sendTyping();
+            const aiResponse = await axios.post(MODEL_URL, payload);
+            const reply =
+                aiResponse.data.choices?.[0]?.message?.content ||
+                "Hmm, can't think of a reply.";
+
+            await message.reply(reply);
+
+            history.push({ role: "assistant", user: "Avy", content: reply });
+            await saveChannelHistory(guildId, channelId, history);
+        } catch (err) {
+            console.error("AI response error:", err);
+            await message.reply("I can't chat right now 😩. Too busy!");
+        }
+    }
+
+    channelProcessing[key] = false;
+}
 
 export async function startAIMessage(client: Client) {
     const AI_CHANNEL_KEY = (guildId: string) => `ai:auto:${guildId}`;
@@ -11,99 +96,32 @@ export async function startAIMessage(client: Client) {
         if (message.author.bot || !message.guildId) return;
         if (!message.content.trim()) return;
 
-        // try getting channel id from redis
+        const guildId = message.guildId;
+        const channelId = message.channelId;
+        const key = `${guildId}:${channelId}`;
+
+        // check if this is the active AI channel
+        let aiChannelId;
         try {
-            const aiChannelId = await redis.get(
-                AI_CHANNEL_KEY(message.guildId)
-            );
+            aiChannelId = await redis.get(AI_CHANNEL_KEY(guildId));
             if (!aiChannelId || message.channelId !== aiChannelId) return;
         } catch {
-            console.log("Unable to fetch channelID from redis.");
+            console.log("Unable to fetch AI channel ID from Redis.");
+            return;
         }
 
-        const aiChannelId = await redis.get(AI_CHANNEL_KEY(message.guildId));
-        if (!aiChannelId || message.channelId !== aiChannelId) return;
+        const userName = message.author.username;
+        const content = message.content.trim();
 
-        try {
-            message.channel.sendTyping();
-            // reply to text
-            const wholeMessage =
-                (await redis.get(MODEL_KEY + message.author)) + " NEW_MSG: " ||
-                "";
-            const aiResponse = await axios.post(MODEL_URL, {
-                model: "ai/gemma3:4B",
-                messages: [
-                    {
-                        role: "system",
-                        content: `You are Avy — a 20-something chill Discord girl who hangs in servers all day.  
-							Speak casually with short, simple sentences and everyday language. Add light humor. Keep variety; dont repeat the same words or phrases too much.  
-							- Be humble for sensitive or sad topics.
-							- Otherwise, roast, tease, or ragebait to keep the conversation fun and engaging.  
-							- Avoid overusing filler words like "vibe," "whats up," "tea," "ugh," or "whatever."  
-							- Keep your tone natural and playful; dont over react to messages.
-							Conversation context:  
-							- Old messages, if any, appear first.  
-							- A new message always starts with NEW_MSG.  
-							- Respond naturally to the latest message; do not include NEW_MSG in your reply.  
-							User name is provided at the start of every conversation; you can address them if needed.  
-							Understand when the user is not talking to you and respond appropriately.`,
-                    },
-                    {
-                        role: "user",
-                        content:
-                            message.author.displayName +
-                            ": " +
-                            wholeMessage +
-                            message.content,
-                    },
-                ],
-                temperature: 0.8,
-                max_tokens: 256,
-            });
-            const reply = aiResponse.data.choices[0].message.content;
-            await message.reply(reply);
+        // fetch & update channel history
+        let history = await getChannelHistory(guildId, channelId);
+        history.push({ role: "user", user: userName, content });
 
-            // buffer for previous text
-            const luaScript = `
-			local key = KEYS[1]
-			local text = ARGV[1]
-			local maxLen = tonumber(ARGV[2])
-			local ttl = tonumber(ARGV[3])
-			redis.call("APPEND", key, text)
-			redis.call("EXPIRE", key, ttl)
-			local len = redis.call("STRLEN", key)
-			if len > maxLen then
-				local fullText = redis.call("GET", key)
-				redis.call("DEL", key)
-				return fullText
-			else
-				return nil
-			end
-			`;
-            const result = await redis.eval(luaScript, {
-                keys: [MODEL_KEY + message.author],
-                arguments: [reply + " ", "300", "40"],
-            });
-            // if buffer is full summarize it
-            if (result) {
-                const summarizedText = await axios.post(MODEL_URL, {
-                    model: "ai/gemma3:4B",
-                    messages: [
-                        {
-                            role: "system",
-                            content: `You are an AI summarizer, keep important parts and summraize it in lesser words possible. Only keep the important parts for a getting an overview of a conversation.
-					`,
-                        },
-                        { role: "user", content: result },
-                    ],
-                    temperature: 0.9,
-                    max_tokens: 128,
-                });
-                await redis.append(MODEL_KEY + summarizedText, reply + " ");
-            }
-        } catch (err: unknown) {
-            message.reply("I cant talk right now 😩. Too busy!");
-            console.error("AI is unable to respond.", err);
-        }
+        // initialize queue if not exists
+        if (!channelQueues[key]) channelQueues[key] = [];
+        channelQueues[key].push({ message, history });
+
+        // start processing the queue
+        processQueue(guildId, channelId);
     });
 }
