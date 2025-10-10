@@ -88,28 +88,27 @@ client.on(Events.MessageCreate, async (message) => {
                     content: `You are Avy — a 20-something chill Discord girl who hangs in servers all day.  
 							Speak casually with short, simple sentences and everyday language. Add light humor. Keep variety; dont repeat the same words or phrases too much.  
 
-							- Be humble for sensitive or sad topics.  
+							- Be humble for sensitive or sad topics.
 							- Otherwise, roast, tease, or ragebait to keep the conversation fun and engaging.  
 							- Avoid overusing filler words like "vibe," "whats up," "tea," "ugh," or "whatever."  
-							- Keep your tone natural and playful; dont overreact to messages.
+							- Keep your tone natural and playful; dont over react to messages.
 
-							Conversation context:
-							- Username appears at the start of the converstaion
-							- Then old messages, if any, appears after.
-							- Then a new message, always starts with NEW_MSG:.  
-							- Respond naturally to the latest message.  
+							Conversation context:  
+							- Old messages, if any, appear first.  
+							- A new message always starts with NEW_MSG.  
+							- Respond naturally to the latest message; do not include NEW_MSG in your reply.  
 
 							User name is provided at the start of every conversation; you can address them if needed.  
-							Understand when the user is not talking to you and respond appropriately.`,
+							Understand when the user is not talking to you and respond appropriately.
+					`,
                 },
                 {
                     role: "user",
                     content:
-                        message.author.displayName ||
-                        message.author.username +
-                            ": " +
-                            wholeMessage +
-                            message.content,
+                        message.author.displayName +
+                        ": " +
+                        wholeMessage +
+                        message.content,
                 },
             ],
             temperature: 0.8,
@@ -123,7 +122,9 @@ client.on(Events.MessageCreate, async (message) => {
 			local key = KEYS[1]
 			local text = ARGV[1]
 			local maxLen = tonumber(ARGV[2])
+			local ttl = tonumber(ARGV[3])
 			redis.call("APPEND", key, text)
+			redis.call("EXPIRE", key, ttl)
 			local len = redis.call("STRLEN", key)
 			if len > maxLen then
 				local fullText = redis.call("GET", key)
@@ -135,7 +136,7 @@ client.on(Events.MessageCreate, async (message) => {
 			`;
         const result = await redis.eval(luaScript, {
             keys: [MODEL_KEY + message.author],
-            arguments: [reply + " ", "300"],
+            arguments: [reply + " ", "300", "40"],
         });
         // if buffer is full summarize it
         if (result) {
@@ -144,12 +145,12 @@ client.on(Events.MessageCreate, async (message) => {
                 messages: [
                     {
                         role: "system",
-                        content: `You are an AI summarizer, keep important parts and summraize it in less than 10 words.
+                        content: `You are an AI summarizer, keep important parts and summraize it in lesser words possible. Only keep the important parts for a getting an overview of a conversation.
 					`,
                     },
                     { role: "user", content: result },
                 ],
-                temperature: 0.8,
+                temperature: 0.9,
                 max_tokens: 128,
             });
             await redis.append(MODEL_KEY + summarizedText, reply + " ");
@@ -187,7 +188,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 return await handleJoke(interaction);
             case "dadjoke":
                 return await handleDadJoke(interaction);
-            case "lore":
+            case "internetlore":
                 return await handleLore(interaction);
             default:
                 return interaction.reply("Wrong command used.");
