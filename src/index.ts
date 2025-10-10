@@ -10,7 +10,7 @@ import { handleJoke } from "./commands/joke.js";
 import { handleDadJoke } from "./commands/dadjoke.js";
 import { handleLore } from "./commands/lore.js";
 import { deployCommands } from "./registerCommands.js";
-import { handleAutoAI } from "./commands/autoAI.js";
+import { handleAutoAI } from "./commands/aiChat.js";
 import { startAIMessage } from "./utils/replyWIthAI.js";
 
 const client = new Client({
