@@ -3,6 +3,7 @@ import {
     type ChatInputCommandInteraction,
     ChannelType,
     type GuildTextBasedChannel,
+    PermissionFlagsBits,
 } from "discord.js";
 import {
     setAutoMeme,
@@ -17,6 +18,18 @@ export async function handleMemeAuto(interaction: ChatInputCommandInteraction) {
     if (!guildId) {
         return interaction.reply({
             content: "❌ This command only works in servers.",
+            flags: MessageFlags.Ephemeral,
+        });
+    }
+
+    const canManageGuild = interaction.memberPermissions?.has(
+        PermissionFlagsBits.ManageGuild
+    );
+
+    if (!canManageGuild && sub !== "status") {
+        return interaction.reply({
+            content:
+                "❌ You need the Manage Server permission to change auto meme settings.",
             flags: MessageFlags.Ephemeral,
         });
     }

@@ -9,7 +9,7 @@
         "test": "tsx watch test/indexTest.ts",
         "build": "tsc -p tsconfig.json",
         "start": "node dist/index.js",
-        "deploy:commands": "tsx src/registerCommands.ts"
+        "deploy:commands": "tsx test/registerTestCommands.ts"
     },
     "keywords": [],
     "author": "",

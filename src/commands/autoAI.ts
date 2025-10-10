@@ -1,6 +1,7 @@
 import {
     ChannelType,
     MessageFlags,
+    PermissionFlagsBits,
     type ChatInputCommandInteraction,
     type GuildTextBasedChannel,
 } from "discord.js";
@@ -27,6 +28,18 @@ export async function handleAutoAI(interaction: ChatInputCommandInteraction) {
     if (!guildId) {
         return interaction.reply({
             content: "This command can only be used in servers.",
+            flags: MessageFlags.Ephemeral,
+        });
+    }
+
+    const canManageGuild = interaction.memberPermissions?.has(
+        PermissionFlagsBits.ManageGuild
+    );
+
+    if (!canManageGuild && sub !== "status") {
+        return interaction.reply({
+            content:
+                "❌ You need the Manage Server permission to modify AI chat settings.",
             flags: MessageFlags.Ephemeral,
         });
     }
