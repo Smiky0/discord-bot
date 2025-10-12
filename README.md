@@ -8,6 +8,7 @@
 
 ## ✨ Features
 
+- 🗣️ `/aichat` AI chatter using gemma3 with history in Redis
 - 🃏 `/joke`, `/dadjoke`, `/meme`, `/internetlore`, `/ping`, `/help`
 - 🌀 `/automeme` scheduled meme drops with Redis caching
 - ⚙️ Slash-command registration with application commands API
@@ -30,6 +31,8 @@ Discord Gateway ──▶ Bot (Node.js + TypeScript)
 ## 🚀 Quick Start
 
 ```bash
+# make sure redis is running
+
 # install dependencies
 pnpm install
 
@@ -50,6 +53,7 @@ pnpm dev
 | `DISCORD_CLIENT_ID`   | Application client ID              |
 | `DISCORD_GUILD_ID`    | Guild for command registration     |
 | `REDIS_URL`           | Redis connection string            |
+| `MODEL_URL`           | Base URL for the AI chat service   |
 
 ---
 
@@ -68,6 +72,15 @@ docker compose down
 
 ---
 
+## 🗣️ AI Chat
+
+- Point `MODEL_URL` to a compatible chat-completions endpoint (defaults to `http://localhost:12434/`).
+- Set the active channel with `/aichat set channel:#your-channel` (requires Manage Server).
+- Check status anytime with `/aichat status`, or disable via `/aichat disable`.
+- Messages in the AI channel are queued per-channel and trimmed to the last 20 entries for context.
+
+---
+
 ## 🧪 Scripts
 
 | Command               | Purpose              |
@@ -75,6 +88,7 @@ docker compose down
 | `pnpm dev`            | Hot-reload dev mode |
 | `pnpm build`          | Compile TypeScript  |
 | `pnpm start`          | Run compiled bot    |
+| `pnpm test`          	| Run test bot	      |
 | `pnpm deploy:commands`| Register slash cmds |
 
 ---
