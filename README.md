@@ -2,7 +2,7 @@
 
 ![Bot Banner](https://img.shields.io/badge/Discord-Bot-blue?style=for-the-badge) ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge) ![Docker](https://img.shields.io/badge/Docker-Ready-0db7ed?style=for-the-badge)
 
-> A modern Discord bot delivering memes, jokes, and server utilities with Redis-backed caching.
+> A modern Discord bot with AI chat, delivering memes, jokes, and server utilities with Redis-backed caching.
 
 ---
 
