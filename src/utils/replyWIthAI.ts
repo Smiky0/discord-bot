@@ -110,7 +110,7 @@ export async function startAIMessage(client: Client) {
             return;
         }
 
-        const userName = message.author.username;
+        const userName = message.author.displayName;
         const content = message.content.trim();
 
         // fetch & update channel history
