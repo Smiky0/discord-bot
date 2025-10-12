@@ -1,4 +1,4 @@
-# 🤖 Discord Bot & Meme Engine
+# 🤖 Discord Bot With AI Chat and Memes
 
 ![Bot Banner](https://img.shields.io/badge/Discord-Bot-blue?style=for-the-badge) ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge) ![Docker](https://img.shields.io/badge/Docker-Ready-0db7ed?style=for-the-badge)
 
