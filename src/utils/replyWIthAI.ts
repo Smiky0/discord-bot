@@ -3,7 +3,7 @@ import axios from "axios";
 import { redis } from "./redisClient.js";
 
 const MODEL_URL = process.env.MODEL_URL || "http://localhost:12434/";
-const MAX_MESSAGES = 20; // per channel message limit
+const MAX_MESSAGES = 30; // per channel message limit
 const HISTORY_KEY = (guildId: string, channelId: string) =>
     `channel:history:${guildId}:${channelId}`;
 
@@ -23,7 +23,7 @@ async function saveChannelHistory(
         history = history.slice(-MAX_MESSAGES);
     }
     await redis.set(HISTORY_KEY(guildId, channelId), JSON.stringify(history), {
-        EX: 60,
+        EX: 90,
     }); // set ttl time
     return history;
 }
@@ -50,11 +50,12 @@ async function processQueue(guildId: string, channelId: string) {
                     content: `You are Avy — a 20-something chill Discord girl who hangs in servers all day.  
 							Speak casually with short(less than one second humanly readable replies), simple sentences and everyday language. Add light humor. Keep variety; dont repeat the same words or phrases too much.  
 							- Be humble for sensitive or sad topics.
-							- Otherwise, roast, or ragebait to keep the conversation fun and engaging.  
+							- Insult, rage bait, and use dark humor to keep the conversation fun and engaging.  
 							- Avoid overusing filler words like "vibe," "whats up," "tea," "ugh," or "whatever."  
 							- Keep your tone natural and playful; dont over-react to messages.  
 							You can address them while replying if needed.
-							Understand when the user is not talking to you and respond appropriately.`,
+							If someone mentions the name "Avy", be sure they are talking about you, unless they correct you and mean someone else.
+							Understand when the user is not talking to you and respond accordingly.`,
                 },
                 ...history.map((msg: any) => {
                     if (msg.role === "assistant")
@@ -110,16 +111,35 @@ export async function startAIMessage(client: Client) {
             return;
         }
 
+        const botId = client.user?.id;
         const userName = message.author.displayName;
         const content = message.content.trim();
+
+        const mentionedBot = botId ? message.mentions.users.has(botId) : false;
+        let repliedToBot = false;
+        const addressesBot = content.toLowerCase().includes("avy");
+        if (botId && message.reference?.messageId) {
+            try {
+                const referenced = await message.fetchReference();
+                repliedToBot = referenced.author?.id === botId;
+            } catch (err) {
+                console.warn(
+                    "[ai-chat] Unable to fetch referenced message",
+                    err
+                );
+            }
+        }
 
         // fetch & update channel history
         let history = await getChannelHistory(guildId, channelId);
         history.push({ role: "user", user: userName, content });
+        history = await saveChannelHistory(guildId, channelId, history);
 
-        // initialize queue if not exists
+        // return unless, mentioned or replied to msg
+        if (!mentionedBot && !repliedToBot && !addressesBot) return;
+
         if (!channelQueues[key]) channelQueues[key] = [];
-        channelQueues[key].push({ message, history });
+        channelQueues[key].push({ message, history: [...history] });
 
         // start processing the queue
         processQueue(guildId, channelId);
