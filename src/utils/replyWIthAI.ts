@@ -24,8 +24,8 @@ async function saveChannelHistory(
         history = history.slice(-MAX_MESSAGES);
     }
     await redis.set(HISTORY_KEY(guildId, channelId), JSON.stringify(history), {
-        EX: 90,
-    }); // set ttl time
+        EX: 60 * 10,
+    }); // set ttl time to 10 min
     return history;
 }
 
