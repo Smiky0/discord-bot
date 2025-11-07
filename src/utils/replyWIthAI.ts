@@ -3,6 +3,7 @@ import axios from "axios";
 import { redis } from "./redisClient.js";
 
 const MODEL_URL = process.env.MODEL_URL || "http://localhost:12434/";
+const MODEL_PROMPT = process.env.MODEL_SYSTEM_PROMPT;
 const MAX_MESSAGES = 30; // per channel message limit
 const HISTORY_KEY = (guildId: string, channelId: string) =>
     `channel:history:${guildId}:${channelId}`;
@@ -47,15 +48,7 @@ async function processQueue(guildId: string, channelId: string) {
             messages: [
                 {
                     role: "system",
-                    content: `You are Avy — a 20-something chill Discord girl who hangs in servers all day.  
-							Speak casually with short(less than one second humanly readable replies), simple sentences and everyday language. Add light humor. Keep variety; dont repeat the same words or phrases too much.  
-							- Be humble for sensitive or sad topics.
-							- Insult, rage bait, and use dark humor to keep the conversation fun and engaging.  
-							- Avoid overusing filler words like "vibe," "whats up," "tea," "ugh," or "whatever."  
-							- Keep your tone natural and playful; dont over-react to messages.  
-							You can address them while replying if needed.
-							If someone mentions the name "Avy", be sure they are talking about you, unless they correct you and mean someone else.
-							Understand when the user is not talking to you and respond accordingly.`,
+                    content: MODEL_PROMPT,
                 },
                 ...history.map((msg: any) => {
                     if (msg.role === "assistant")
@@ -68,6 +61,7 @@ async function processQueue(guildId: string, channelId: string) {
             ],
             temperature: 0.7,
             max_tokens: 256,
+            stream: false,
         };
 
         try {
@@ -111,24 +105,24 @@ export async function startAIMessage(client: Client) {
             return;
         }
 
-        const botId = client.user?.id;
+        // const botId = client.user?.id;
         const userName = message.author.displayName;
         const content = message.content.trim();
 
-        const mentionedBot = botId ? message.mentions.users.has(botId) : false;
-        let repliedToBot = false;
-        const addressesBot = content.toLowerCase().includes("avy");
-        if (botId && message.reference?.messageId) {
-            try {
-                const referenced = await message.fetchReference();
-                repliedToBot = referenced.author?.id === botId;
-            } catch (err) {
-                console.warn(
-                    "[ai-chat] Unable to fetch referenced message",
-                    err
-                );
-            }
-        }
+        // const mentionedBot = botId ? message.mentions.users.has(botId) : false;
+        // let repliedToBot = false;
+        // const addressesBot = content.toLowerCase().includes("avy");
+        // if (botId && message.reference?.messageId) {
+        //     try {
+        //         const referenced = await message.fetchReference();
+        //         repliedToBot = referenced.author?.id === botId;
+        //     } catch (err) {
+        //         console.warn(
+        //             "[ai-chat] Unable to fetch referenced message",
+        //             err
+        //         );
+        //     }
+        // }
 
         // fetch & update channel history
         let history = await getChannelHistory(guildId, channelId);
@@ -136,7 +130,7 @@ export async function startAIMessage(client: Client) {
         history = await saveChannelHistory(guildId, channelId, history);
 
         // return unless, mentioned or replied to msg
-        if (!mentionedBot && !repliedToBot && !addressesBot) return;
+        // if (!mentionedBot && !repliedToBot && !addressesBot) return;
 
         if (!channelQueues[key]) channelQueues[key] = [];
         channelQueues[key].push({ message, history: [...history] });
