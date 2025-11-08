@@ -95,42 +95,51 @@ export async function startAIMessage(client: Client) {
         const channelId = message.channelId;
         const key = `${guildId}:${channelId}`;
 
+        const botId = client.user?.id;
+        const userName = message.author.displayName;
+        const content = message.content.trim();
+        const mentionedBot = botId ? message.mentions.users.has(botId) : false;
+        let repliedToBot = false;
+
+        if (botId && message.reference?.messageId) {
+            try {
+                const referenced = await message.fetchReference();
+                repliedToBot = referenced.author?.id === botId;
+            } catch (err) {
+                console.warn(
+                    "[ai-chat] Unable to fetch referenced message",
+                    err
+                );
+            }
+        }
+
         // check if this is the active AI channel
         let aiChannelId;
         try {
             aiChannelId = await redis.get(AI_CHANNEL_KEY(guildId));
-            if (!aiChannelId || message.channelId !== aiChannelId) return;
+            if (!aiChannelId) {
+                console.log("No AI channel configured for guild", guildId);
+                return;
+            }
+
+            // If message is in the AI channel -> always handle it.
+            // Otherwise (other channels) -> only handle if bot was mentioned or message is a reply to bot.
+            if (message.channelId !== aiChannelId) {
+                if (!mentionedBot && !repliedToBot) {
+                    // Not in AI channel and not addressed to the bot -> ignore
+                    return;
+                }
+            }
+            // If we reach here: either it's AI channel (handle always) or it's another channel but mentioned/replied (handle)
         } catch {
             console.log("Unable to fetch AI channel ID from Redis.");
             return;
         }
 
-        // const botId = client.user?.id;
-        const userName = message.author.displayName;
-        const content = message.content.trim();
-
-        // const mentionedBot = botId ? message.mentions.users.has(botId) : false;
-        // let repliedToBot = false;
-        // const addressesBot = content.toLowerCase().includes("avy");
-        // if (botId && message.reference?.messageId) {
-        //     try {
-        //         const referenced = await message.fetchReference();
-        //         repliedToBot = referenced.author?.id === botId;
-        //     } catch (err) {
-        //         console.warn(
-        //             "[ai-chat] Unable to fetch referenced message",
-        //             err
-        //         );
-        //     }
-        // }
-
         // fetch & update channel history
         let history = await getChannelHistory(guildId, channelId);
         history.push({ role: "user", user: userName, content });
         history = await saveChannelHistory(guildId, channelId, history);
-
-        // return unless, mentioned or replied to msg
-        // if (!mentionedBot && !repliedToBot && !addressesBot) return;
 
         if (!channelQueues[key]) channelQueues[key] = [];
         channelQueues[key].push({ message, history: [...history] });
