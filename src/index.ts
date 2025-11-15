@@ -1,4 +1,10 @@
-import { ActivityType, Client, Events, GatewayIntentBits } from "discord.js";
+import {
+    ActivityType,
+    Client,
+    Events,
+    GatewayIntentBits,
+    Partials,
+} from "discord.js";
 import { config } from "./utils/config.js";
 import { fillCache, startScheduler } from "./utils/memeFetcher.js";
 import { initJokeCaches } from "./utils/jokeFetcher.js";
@@ -8,7 +14,7 @@ import { handleMeme } from "./commands/meme.js";
 import { handleMemeAuto } from "./commands/automeme.js";
 import { handleJoke } from "./commands/joke.js";
 import { handleDadJoke } from "./commands/dadjoke.js";
-import { handleLore } from "./commands/lore.js";
+import { handleSearch } from "./commands/search.js";
 import { deployCommands } from "./registerCommands.js";
 import { handleAutoAI } from "./commands/aiChat.js";
 import { startAIMessage } from "./utils/replyWIthAI.js";
@@ -19,7 +25,9 @@ const client = new Client({
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages,
     ],
+    partials: [Partials.Channel],
 });
 
 let isReady = false;
@@ -103,8 +111,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
                 return await handleJoke(interaction);
             case "dadjoke":
                 return await handleDadJoke(interaction);
-            case "internetlore":
-                return await handleLore(interaction);
+            case "search":
+                return await handleSearch(interaction);
             case "aichat":
                 return await handleAutoAI(interaction);
             default:
@@ -115,16 +123,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
             `[command] ${interaction.commandName} failed:`,
             error.message
         );
-        const reply = {
-            content: `❌ Command failed: ${error.message || "Unknown error"}`,
-            ephemeral: true,
-        };
-
         try {
             if (interaction.deferred || interaction.replied) {
-                await interaction.editReply(reply);
+                await interaction.editReply({
+                    content: `❌ Command failed: ${
+                        error.message || "Unknown error"
+                    }`,
+                });
             } else {
-                await interaction.reply(reply);
+                await interaction.reply({
+                    content: `❌ Command failed: ${
+                        error.message || "Unknown error"
+                    }`,
+                    ephemeral: interaction.inGuild(),
+                });
             }
         } catch {
             // Interaction expired or already handled

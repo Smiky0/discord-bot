@@ -11,14 +11,10 @@ export async function handleHelp(interaction: ChatInputCommandInteraction) {
                 value: "Set/Remove channel to get *human like* replies from AI.",
                 inline: false,
             },
-            { name: "/joke", value: "Get a random joke", inline: false },
-            { name: "/dadjoke", value: "Get a random dad joke", inline: false },
-            {
-                name: "/internetlore",
-                value: "Get a lore from reddit",
-                inline: false,
-            },
+			{ name: "/joke", value: "Get a random joke", inline: false },
+			{ name: "/search", value: "Searches google for answer", inline: false },
             { name: "/meme", value: "Post a meme", inline: false },
+            { name: "/dadjoke", value: "Get a random dad joke", inline: false },
             {
                 name: "/automeme",
                 value: "Set/Remove channel for posting memes automatically. ",

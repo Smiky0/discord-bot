@@ -25,12 +25,19 @@ const commands = [
         .setDescription("Get a random da joke"),
 
     new SlashCommandBuilder()
-        .setName("internetlore")
-        .setDescription("Get random internet lore from reddit."),
-
-    new SlashCommandBuilder()
         .setName("meme")
         .setDescription("Get a random meme"),
+
+    new SlashCommandBuilder()
+        .setName("search")
+        .setDescription("Get google search result")
+        .setDMPermission(true)
+        .addStringOption((option) =>
+            option
+                .setName("query")
+                .setDescription("What do you want to search for?")
+                .setRequired(true)
+        ),
 
     new SlashCommandBuilder()
         .setName("automeme")
@@ -86,7 +93,7 @@ const commands = [
         ),
 ].map((c) => c.toJSON());
 
-export async function deployCommands(guildId: Guild["id"]) {
+export async function deployCommands(guildId?: Guild["id"]) {
     const rest = new REST({ version: "10" }).setToken(config.discord.token);
 
     try {
@@ -106,4 +113,11 @@ export async function deployCommands(guildId: Guild["id"]) {
         console.error("❌ Deployment failed:", error);
         process.exit(1);
     }
+}
+
+const guildOverride = process.env.GUILD_ID?.trim();
+if (guildOverride) {
+    void deployCommands(guildOverride);
+} else {
+    void deployCommands();
 }
