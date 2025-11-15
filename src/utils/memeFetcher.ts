@@ -105,26 +105,17 @@ export async function popMeme(): Promise<Meme | null> {
 
 // --- Discord Embeds ---
 function createEmbed(meme: Meme) {
-    const isNsfw = meme.nsfw || meme.spoiler;
-
     const embed = new EmbedBuilder()
         .setURL(meme.postLink || meme.url)
         .setColor("#FF4500")
         .setFooter({
             text: `r/${meme.subreddit}${
                 meme.author ? ` • u/${meme.author}` : ""
-            }${meme.ups ? ` • 👍 ${meme.ups}` : ""}${
-                isNsfw ? " • 🔞 NSFW" : ""
-            }`,
+            }${meme.ups ? ` • 👍 ${meme.ups}` : ""}`,
         });
 
-    if (isNsfw) {
-        embed.setTitle(`🔞 ${meme.title}`);
-        embed.setImage(`||${meme.url}||`);
-    } else {
-        embed.setTitle(meme.title);
-        embed.setImage(meme.url);
-    }
+    embed.setTitle(meme.title);
+    embed.setImage(meme.url);
 
     return embed;
 }
