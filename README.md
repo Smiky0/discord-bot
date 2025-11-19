@@ -2,13 +2,14 @@
 
 ![Bot Banner](https://img.shields.io/badge/Discord-Bot-blue?style=for-the-badge) ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge) ![Docker](https://img.shields.io/badge/Docker-Ready-0db7ed?style=for-the-badge)
 
-> A modern Discord bot with AI chat, delivering memes, jokes, and server utilities with Redis-backed caching.
+> A modern Discord bot with AI chat, google search, deliver memes, jokes, and server utilities with Redis-backed caching.
 
 ---
 
 ## ✨ Features
 
 - 🗣️ `/aichat` AI chatter using gemma3 with history in Redis
+- 🔍 `/search` searches google for your answer using gemini API
 - 🃏 `/joke`, `/dadjoke`, `/meme`, `/internetlore`, `/ping`, `/help`
 - 🌀 `/automeme` scheduled meme drops with Redis caching
 - ⚙️ Slash-command registration with application commands API
@@ -52,6 +53,7 @@ pnpm dev
 | `DISCORD_TOKEN`       | Bot token                          |
 | `DISCORD_CLIENT_ID`   | Application client ID              |
 | `DISCORD_GUILD_ID`    | Guild for command registration     |
+| `GEMINI_API_KEY`		| Gemini Search API key
 | `REDIS_URL`           | Redis connection string            |
 | `MODEL_URL`           | Base URL for the AI chat service   |
 
