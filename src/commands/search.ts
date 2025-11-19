@@ -23,8 +23,6 @@ const PROMPT_PREFIX =
     "Answer very concisely (max ~2 sentences). Provide only the key fact(s).";
 
 export async function handleSearch(interaction: ChatInputCommandInteraction) {
-    const inGuild = interaction.inGuild();
-
     const replyEarly = (content: string) => interaction.reply({ content });
 
     if (!ai) {
