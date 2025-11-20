@@ -93,9 +93,9 @@ const commands = [
         ),
 ].map((c) => c.toJSON());
 
-export async function deployCommands(guildId?: Guild["id"]) {
-    const rest = new REST({ version: "10" }).setToken(config.discord.token);
+const rest = new REST({ version: "10" }).setToken(config.discord.token);
 
+export async function deployCommands(guildId?: Guild["id"]) {
     try {
         const route = guildId
             ? Routes.applicationGuildCommands(
@@ -115,9 +115,29 @@ export async function deployCommands(guildId?: Guild["id"]) {
     }
 }
 
+export async function clearGuildCommands(guildId: Guild["id"]) {
+    try {
+        console.log(`Clearing guild commands for ${guildId}...`);
+        await rest.put(
+            Routes.applicationGuildCommands(
+                config.discord.applicationId,
+                guildId
+            ),
+            { body: [] }
+        );
+        console.log(`✅ Guild commands cleared for ${guildId}`);
+    } catch (error) {
+        console.error(
+            `❌ Failed to clear guild commands for ${guildId}:`,
+            error
+        );
+        throw error;
+    }
+}
+
 const guildOverride = process.env.GUILD_ID?.trim();
 if (guildOverride) {
-    void deployCommands(guildOverride);
+    void clearGuildCommands(guildOverride);
 } else {
     void deployCommands();
 }

@@ -15,7 +15,7 @@ import { handleMemeAuto } from "./commands/automeme.js";
 import { handleJoke } from "./commands/joke.js";
 import { handleDadJoke } from "./commands/dadjoke.js";
 import { handleSearch } from "./commands/search.js";
-import { deployCommands } from "./registerCommands.js";
+import { clearGuildCommands, deployCommands } from "./registerCommands.js";
 import { handleAutoAI } from "./commands/aiChat.js";
 import { startAIMessage } from "./utils/replyWIthAI.js";
 
@@ -69,18 +69,35 @@ client.once(Events.ClientReady, async (c: any) => {
         console.error("⚠️ Failed to init AI chat.", err.message);
     }
 
+    // ensure commands are only deployed globally
+    try {
+        await deployCommands();
+        const guildIds = Array.from(client.guilds.cache.keys());
+        for (const guildId of guildIds) {
+            await clearGuildCommands(guildId);
+        }
+        console.log("✅ Global commands deployed and guild overrides cleared");
+    } catch (err: any) {
+        console.error(
+            "⚠️ Failed to sync global commands:",
+            err?.message || err
+        );
+    }
+
     isReady = true;
 });
 
-// Whenever the bot joins a new guild
+// Whenever the bot joins a new guild ensure no guild-scoped commands linger
 client.on(Events.GuildCreate, async (guild) => {
     console.log(`Joined new guild: ${guild.name} (${guild.id})`);
-    // deploy commands
     try {
-        await deployCommands(guild.id);
-        console.log(`Registered commands in ${guild.name}`);
+        await clearGuildCommands(guild.id);
+        console.log(`Cleared guild commands for ${guild.name}`);
     } catch (error) {
-        console.error(`Failed to register commands for ${guild.name}:`, error);
+        console.error(
+            `Failed to clear guild commands for ${guild.name}:`,
+            error
+        );
     }
 });
 
